@@ -1,0 +1,25 @@
+services:
+
+  # ── TDA engine — IsolationForest + Autoencoder + DBSCAN + ripser TDA ────
+  hudex-tda:
+    build: .
+    ports:
+      - "8002:8002"
+    depends_on:
+      neo4j:
+        condition: service_healthy
+
+  # ── Neo4j graph database ─────────────────────────────────────────────────
+  neo4j:
+    image: neo4j:5-community
+    environment:
+      NEO4J_AUTH: neo4j/password
+    ports:
+      - "7474:7474"   # Neo4j browser UI
+      - "7687:7687"   # bolt
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "password", "RETURN 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s

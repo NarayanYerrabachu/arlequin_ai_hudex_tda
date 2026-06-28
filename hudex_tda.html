@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HuDex TDA Engine — Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#13151A; --panel:#1A1D24; --panel2:#20242D; --line:#2A2F3A;
+    --text:#D9DCE3; --mute:#878E9C; --faint:#59616E;
+    --paper:#ECE7DA; --paper-ink:#23211C; --paper-mute:#6E6655;
+    --signal:#E0A33E;
+    --signal-deep:#B5651d;
+    --danger:#E05252;
+    --danger-deep:#8B1A1A;
+    --relate:#5E9CA6;
+    --theme:#A9B4C4;
+    --tda:#9B7FD4;       /* topological purple */
+    --ok:#6Fae8f;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--ink); color:var(--text);
+    font-family:'Space Grotesk',system-ui,sans-serif;
+    font-size:15px; line-height:1.45; -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:'IBM Plex Mono',monospace}
+  button{font-family:inherit; color:inherit; cursor:pointer}
+  ::selection{background:var(--tda); color:#100C1A}
+
+  .app{display:flex; flex-direction:column; height:100vh; min-height:0}
+  header{
+    display:flex; align-items:center; gap:18px; padding:14px 20px;
+    border-bottom:1px solid var(--line); background:linear-gradient(180deg,#1B1721,#171421);
+    flex-wrap:wrap;
+  }
+  .brand{display:flex; align-items:baseline; gap:10px; white-space:nowrap}
+  .brand .mark{font-weight:700; font-size:18px; letter-spacing:.04em}
+  .brand .mark b{color:var(--tda)}
+  .brand .tag{font-size:11px; color:var(--mute); letter-spacing:.14em; text-transform:uppercase}
+  .brand .engine-badge{
+    font-size:10px; color:var(--tda); border:1px solid rgba(155,127,212,.4);
+    border-radius:2px; padding:1px 7px; letter-spacing:.1em; text-transform:uppercase;
+    font-family:'IBM Plex Mono',monospace; white-space:nowrap;
+  }
+
+  .search{flex:1; min-width:220px; position:relative; display:flex; align-items:center}
+  .search input{
+    width:100%; background:var(--panel2); border:1px solid var(--line); color:var(--text);
+    border-radius:2px; padding:9px 12px 9px 34px; font-family:'IBM Plex Mono',monospace;
+    font-size:13px; letter-spacing:.01em;
+  }
+  .search input:focus{outline:2px solid var(--tda); outline-offset:-1px; border-color:transparent}
+  .search .ico{position:absolute; left:11px; color:var(--mute); font-size:13px}
+  .search .hint{position:absolute; right:10px; font-size:10px; color:var(--faint); letter-spacing:.1em}
+
+  .stats{display:flex; gap:20px; white-space:nowrap}
+  .stat .n{font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:15px}
+  .stat .l{font-size:10px; color:var(--mute); letter-spacing:.12em; text-transform:uppercase}
+  .stat.clean .n{color:var(--ok)}
+  .stat.tda-stat .n{color:var(--tda)}
+
+  .work{flex:1; display:grid; grid-template-columns:172px minmax(280px,1fr) minmax(300px,1.15fr);
+        min-height:0; position:relative}
+  @media(max-width:880px){ .work{grid-template-columns:1fr} .rail{display:none} }
+
+  .rail{border-right:1px solid var(--line); padding:16px 10px; display:flex; flex-direction:column; gap:4px}
+  .rail .lbl{font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--faint);
+             padding:4px 10px 8px}
+  .lens{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    padding:9px 11px; border:1px solid transparent; border-radius:3px; background:none;
+    width:100%; text-align:left; color:var(--mute); font-size:13.5px;
+  }
+  .lens:hover{background:var(--panel)}
+  .lens .dot{width:7px;height:7px;border-radius:50%;flex:none;margin-right:7px}
+  .lens .nm{display:flex;align-items:center; flex:1}
+  .lens .ct{font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--faint)}
+  .lens[aria-selected="true"]{background:var(--panel2); color:var(--text); border-color:var(--line)}
+  .lens.anom .dot{background:var(--signal)}
+  .lens.susp .dot{background:var(--danger)}
+  .lens.rel  .dot{background:var(--relate)}
+  .lens.theme .dot{background:var(--theme)}
+  .lens.topo .dot{background:var(--tda)}
+  .lens.query .dot{background:#fff}
+
+  .col{min-height:0; overflow:auto; padding:14px}
+  .col::-webkit-scrollbar{width:9px} .col::-webkit-scrollbar-thumb{background:var(--line); border-radius:9px}
+  .col-head{display:flex; align-items:baseline; justify-content:space-between; margin:2px 4px 12px}
+  .col-head h2{margin:0; font-size:13px; letter-spacing:.06em; text-transform:uppercase; color:var(--text); font-weight:600}
+  .col-head .sub{font-size:11px; color:var(--mute)}
+
+  .center{border-right:1px solid var(--line)}
+
+  .find{
+    border:1px solid var(--line); border-left:2px solid var(--line); border-radius:3px;
+    padding:11px 13px; margin-bottom:9px; background:var(--panel); cursor:pointer;
+    transition:border-color .12s, background .12s;
+  }
+  .find:hover{background:var(--panel2)}
+  .find[aria-selected="true"]{background:var(--panel2)}
+  .find.k-anomaly[aria-selected="true"]{border-left-color:var(--signal)}
+  .find.k-suspicious[aria-selected="true"]{border-left-color:var(--danger)}
+  .find.k-suspicious .title{color:var(--danger)}
+  .find.k-relationship[aria-selected="true"]{border-left-color:var(--relate)}
+  .find.k-theme[aria-selected="true"]{border-left-color:var(--theme)}
+  .find.k-topology[aria-selected="true"]{border-left-color:var(--tda)}
+  .find.k-topology .title{color:var(--tda)}
+  .find.k-query[aria-selected="true"]{border-left-color:#fff}
+  .find .ft{display:flex; align-items:center; gap:8px; justify-content:space-between}
+  .find .title{font-weight:500; font-size:14px}
+  .find .meta{font-size:11.5px; color:var(--mute); margin-top:5px; font-family:'IBM Plex Mono',monospace}
+  .find .detail{font-size:12.5px; color:var(--mute); margin-top:6px; line-height:1.4}
+  .find .why{margin-top:8px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--faint);
+             display:flex; flex-wrap:wrap; gap:5px; align-items:center}
+  .find .why span{color:var(--signal); border:1px solid rgba(224,163,62,.35);
+                  border-radius:2px; padding:0 5px; background:rgba(224,163,62,.07)}
+  .find .keywords{margin-top:6px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--faint);
+                  display:flex; flex-wrap:wrap; gap:5px; align-items:center}
+  .find .keywords span{color:var(--danger); border:1px solid rgba(224,82,82,.35);
+                       border-radius:2px; padding:0 5px; background:rgba(224,82,82,.07)}
+  .find .tda-chips{margin-top:6px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--faint);
+                   display:flex; flex-wrap:wrap; gap:5px; align-items:center}
+  .find .tda-chips span{color:var(--tda); border:1px solid rgba(155,127,212,.35);
+                        border-radius:2px; padding:0 5px; background:rgba(155,127,212,.07)}
+
+  .sev{display:flex; align-items:center; gap:7px; flex:none}
+  .sev .bar{width:46px; height:4px; background:var(--line); border-radius:3px; overflow:hidden}
+  .sev .bar i{display:block; height:100%; background:var(--signal)}
+  .sev .v{font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--signal)}
+  .chip{font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--faint);
+        border:1px solid var(--line); border-radius:2px; padding:1px 6px}
+
+  .rtabs{display:flex; border-bottom:1px solid var(--line); margin-bottom:12px; gap:0}
+  .rtab{background:none; border:none; border-bottom:2px solid transparent; padding:9px 16px;
+        font-size:12.5px; color:var(--mute); cursor:pointer; letter-spacing:.04em}
+  .rtab:hover{color:var(--text)}
+  .rtab.active{color:var(--text); border-bottom-color:var(--tda)}
+  .rtab span{font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--faint); margin-left:5px}
+
+  .source{background:linear-gradient(180deg,#15141D,#13121A)}
+  .src-empty{color:var(--mute); font-size:13px; padding:30px 14px; text-align:center; line-height:1.6}
+  .src-empty b{color:var(--text); display:block; margin-bottom:6px; font-weight:500}
+  .trail-head{display:flex; align-items:center; gap:9px; margin:0 2px 12px}
+  .trail-head .ttl{font-size:13px; letter-spacing:.05em; text-transform:uppercase; font-weight:600}
+  .trail-head .ct{font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--signal)}
+  .trail-head .ln{flex:1; height:1px; background:linear-gradient(90deg,var(--signal-deep),transparent)}
+
+  .evidence{
+    background:var(--paper); color:var(--paper-ink); border-radius:3px; padding:11px 13px;
+    margin-bottom:9px; font-family:'IBM Plex Mono',monospace; font-size:12.5px; line-height:1.55;
+    box-shadow:0 1px 0 rgba(0,0,0,.4), inset 0 0 0 1px rgba(0,0,0,.05);
+    position:relative;
+  }
+  .evidence .eid{display:flex; justify-content:space-between; align-items:center;
+    font-size:10.5px; color:var(--paper-mute); margin-bottom:6px; letter-spacing:.04em}
+  .evidence .eid .ch{display:flex; gap:8px; align-items:center}
+  .evidence .eid .am{color:var(--signal-deep); font-weight:600}
+  .evidence mark{background:rgba(224,163,62,.42); color:inherit; padding:0 1px; border-radius:1px}
+  .evidence mark.rel{background:rgba(94,156,166,.40)}
+
+  .graphwrap{border:1px solid var(--line); border-radius:3px; background:var(--panel); padding:6px; margin-bottom:14px}
+  svg.graph{display:block; width:100%; height:auto}
+  .gnode circle{stroke:var(--ink); stroke-width:1.5; cursor:pointer}
+  .gnode text{font-family:'IBM Plex Mono',monospace; font-size:9px; fill:var(--mute)}
+  .gedge{stroke:var(--relate); stroke-opacity:.35}
+
+  /* TDA topology panel */
+  .topo-panel{padding:12px 14px; border:1px solid var(--line); border-radius:3px;
+              background:var(--panel); margin-bottom:12px}
+  .topo-panel .topo-head{font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+                          color:var(--tda); font-weight:600; margin-bottom:10px}
+  .topo-row{display:flex; gap:24px; flex-wrap:wrap; margin-bottom:10px}
+  .topo-stat{display:flex; flex-direction:column; gap:2px}
+  .topo-stat .tv{font-family:'IBM Plex Mono',monospace; font-size:18px; font-weight:600; color:var(--tda)}
+  .topo-stat .tl{font-size:10px; color:var(--mute); letter-spacing:.1em; text-transform:uppercase}
+  .topo-bar-wrap{margin-top:6px}
+  .topo-bar-lbl{font-size:10px; color:var(--faint); font-family:'IBM Plex Mono',monospace; margin-bottom:4px}
+  .topo-bar{height:5px; background:var(--line); border-radius:3px; overflow:hidden; margin-bottom:6px}
+  .topo-bar i{display:block; height:100%; background:var(--tda); border-radius:3px}
+  .h1-list{font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--faint); margin-top:4px}
+  .h1-list .h1-row{display:flex; gap:12px; align-items:center; padding:2px 0;
+                    border-bottom:1px solid rgba(42,47,58,.6)}
+  .h1-list .h1-row .ph{color:var(--tda); font-weight:600; min-width:50px}
+  .h1-list .h1-row .span{color:var(--mute); font-size:9.5px}
+  .unavail{color:var(--faint); font-size:12px; font-style:italic}
+
+  #trace{position:absolute; inset:0; pointer-events:none; z-index:5; overflow:visible}
+  #trace path{fill:none; stroke:var(--signal-deep); stroke-width:1.4; stroke-opacity:.7}
+  @media(prefers-reduced-motion:no-preference){
+    #trace path{stroke-dasharray:6 4; animation:flow 1.1s linear infinite}
+  }
+  @keyframes flow{to{stroke-dashoffset:-20}}
+  @media(max-width:880px){ #trace{display:none} }
+
+  .foot{font-size:10.5px; color:var(--faint); padding:7px 14px; border-top:1px solid var(--line);
+        display:flex; gap:16px; flex-wrap:wrap; align-items:center; font-family:'IBM Plex Mono',monospace}
+  .foot b{color:var(--mute); font-weight:500}
+
+  /* upload button */
+  .upload-btn{
+    display:flex; align-items:center; gap:7px; padding:8px 14px;
+    background:var(--panel2); border:1px solid var(--line); border-radius:2px;
+    color:var(--mute); font-size:12.5px; cursor:pointer; white-space:nowrap;
+    font-family:'IBM Plex Mono',monospace; letter-spacing:.04em; flex-shrink:0;
+  }
+  .upload-btn:hover{border-color:var(--tda); color:var(--text)}
+  .upload-btn.loading{opacity:.5; pointer-events:none}
+  #upload-input{display:none}
+  .upload-toast{
+    position:fixed; bottom:18px; right:18px; z-index:100;
+    background:var(--panel2); border:1px solid var(--line); border-radius:3px;
+    padding:10px 16px; font-family:'IBM Plex Mono',monospace; font-size:12px;
+    color:var(--text); box-shadow:0 4px 16px rgba(0,0,0,.5); max-width:340px;
+    display:none;
+  }
+  .upload-toast.ok{border-color:var(--ok)}
+  .upload-toast.err{border-color:var(--danger); color:var(--danger)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <div class="mark mono">hu<b>·</b>dex<span style="color:var(--faint)">/tda</span></div>
+      <div class="tag">topological AI</div>
+      <div class="engine-badge">TDA ENGINE</div>
+    </div>
+    <div class="search">
+      <span class="ico mono">&gt;</span>
+      <input id="q" type="text" placeholder="interrogate the corpus — e.g. off the books cash payment" aria-label="Query the corpus" autocomplete="off">
+      <span class="hint mono">ripser · isolation forest · autoencoder</span>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="n mono" id="s-docs">—</div><div class="l">records</div></div>
+      <div class="stat tda-stat"><div class="n mono" id="s-betti1">—</div><div class="l">H1 loops</div></div>
+      <div class="stat clean"><div class="n mono">0</div><div class="l">hallucinations</div></div>
+      <div class="stat"><div class="n mono">100%</div><div class="l">traceable</div></div>
+    </div>
+    <button class="upload-btn" id="upload-btn" onclick="document.getElementById('upload-input').click()">
+      ↑ load corpus
+    </button>
+    <input type="file" id="upload-input" accept=".csv,.json,.txt,.xml,.pdf,.docx,.xlsx,.xls">
+    <div class="upload-toast" id="upload-toast"></div>
+  </header>
+
+  <div class="work">
+    <nav class="rail" id="rail" aria-label="Finding lenses">
+      <div class="lbl">Lenses</div>
+    </nav>
+
+    <section class="col center" aria-label="Findings">
+      <div class="col-head">
+        <h2 id="lens-title">Anomalies</h2>
+        <span class="sub" id="lens-sub"></span>
+      </div>
+      <div id="findings"></div>
+    </section>
+
+    <section class="col source" aria-label="Source trail" id="sourceCol">
+      <div class="rtabs" id="rtabs" style="display:none">
+        <button class="rtab active" id="rtab-graph"   onclick="switchRTab('graph')">Graph</button>
+        <button class="rtab"        id="rtab-trail"   onclick="switchRTab('trail')">Audit Trail <span id="rtab-trail-ct"></span></button>
+      </div>
+      <div id="graphHost"></div>
+      <div id="source"></div>
+    </section>
+
+    <svg id="trace"><path id="tracePath" d=""></path></svg>
+  </div>
+
+  <div class="foot">
+    <span><b>engine</b> IsolationForest · Autoencoder · DBSCAN themes · ripser TDA · co-occurrence graph</span>
+    <span><b>corpus</b> <span id="f-docs">—</span> internal records, fully processed</span>
+    <span><b>graph db</b> <span id="f-graphdb">—</span></span>
+    <span><b>note</b> synthetic demo data with a planted off-book payment scheme</span>
+  </div>
+</div>
+
+<script>
+let DATA = null;
+
+const LENSES = [
+  {key:'suspicious', cls:'susp',  label:'Suspicious',    title:'Suspicious',
+     sub:'keyword-confirmed financial crime signals'},
+  {key:'anomalies',  cls:'anom',  label:'Anomalies',     title:'Anomalies',
+     sub:'IsolationForest + Autoencoder outliers'},
+  {key:'topology',   cls:'topo',  label:'Topology',      title:'Topology',
+     sub:'persistent homology H0/H1 fingerprint'},
+  {key:'relationships', cls:'rel', label:'Relationships', title:'Relationships',
+     sub:'actors that co-occur across records'},
+  {key:'themes',     cls:'theme', label:'Clusters',      title:'DBSCAN Clusters',
+     sub:'density-based document groups (no k preset)'},
+];
+
+let state = {lens:'anomalies', selected:null, queryHits:null, rtab:'graph'};
+
+function switchRTab(tab){
+  state.rtab = tab;
+  document.getElementById('rtab-graph').classList.toggle('active', tab==='graph');
+  document.getElementById('rtab-trail').classList.toggle('active', tab==='trail');
+  document.getElementById('graphHost').style.display = tab==='graph' ? '' : 'none';
+  document.getElementById('source').style.display    = tab==='trail' ? '' : 'none';
+}
+
+let docById = {};
+let maxAnom = 0.0001;
+
+function initDerivedState(){
+  docById = Object.fromEntries(DATA.documents.map(d=>[d.id,d]));
+  maxAnom = Math.max(...DATA.anomalies.map(a=>a.score), ...(DATA.suspicious||[]).map(a=>a.score), 0.0001);
+
+  // inject topology as a pseudo-lens list
+  if(!DATA.topology) DATA.topology = _buildTopologyFindings();
+}
+
+function _buildTopologyFindings(){
+  const tda = DATA.meta.tda || {};
+  if(!tda.available){
+    return [{
+      kind:'topology', title:'Persistent Homology — unavailable',
+      detail:'ripser is not installed in this environment. Install with: pip install ripser',
+      score:0, sources:[], extra:{}
+    }];
+  }
+  const items = [];
+  // one finding per H1 feature
+  (tda.h1_features||[]).forEach((h,i)=>{
+    items.push({
+      kind:'topology',
+      title:`H1 loop #${i+1} — persistence ${h.persistence.toFixed(4)}`,
+      detail:`Topological 1-cycle (loop) in the corpus embedding. Born at distance ${h.birth.toFixed(4)}, `+
+             `dies at ${h.death.toFixed(4)}. Persistent loops suggest sub-groups that share vocabulary `+
+             `without fully merging — potential hidden clusters or coordinated behaviour.`,
+      score: h.persistence,
+      sources:[],
+      extra: {birth: h.birth, death: h.death, persistence: h.persistence, index: i},
+    });
+  });
+  if(!items.length){
+    items.push({
+      kind:'topology', title:'No persistent H1 features detected',
+      detail:`Betti-0=${tda.betti_0}, Betti-1=${tda.betti_1}. The corpus forms a single well-connected `+
+             `component with no significant loop structure at the sampled scale.`,
+      score:0, sources:[], extra:{}
+    });
+  }
+  return items;
+}
+
+function esc(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function highlight(text, terms, cls){
+  let html = esc(text);
+  (terms||[]).filter(Boolean).forEach(t=>{
+    const re = new RegExp('('+t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','ig');
+    html = html.replace(re, '<mark'+(cls?(' class="'+cls+'"'):'')+'>$1</mark>');
+  });
+  return html;
+}
+
+function termsFor(f){
+  if(f.kind==='theme') return f.extra.terms||[];
+  if(f.kind==='relationship') return [f.extra.a, f.extra.b];
+  if(f.kind==='anomaly') return f.extra.terms||[];
+  if(f.kind==='suspicious') return [...(f.extra.keywords||[]), ...(f.extra.terms||[])];
+  if(f.kind==='query') return f._terms||[];
+  return [];
+}
+
+// ---------- render rail ----------
+function renderRail(){
+  const rail = document.getElementById('rail');
+  rail.querySelectorAll('.lens').forEach(e=>e.remove());
+  LENSES.forEach(L=>{
+    const list = DATA[L.key];
+    const count = Array.isArray(list) ? list.length : 0;
+    const b = document.createElement('button');
+    b.className = 'lens '+L.cls;
+    b.setAttribute('aria-selected', state.lens===L.key && !state.queryHits);
+    b.innerHTML = `<span class="nm"><span class="dot"></span>${L.label}</span><span class="ct">${count}</span>`;
+    b.onclick = ()=>{ state.lens=L.key; state.selected=null; state.queryHits=null;
+      document.getElementById('q').value=''; render(); };
+    rail.appendChild(b);
+  });
+}
+
+// ---------- render findings ----------
+function activeList(){
+  if(state.queryHits) return state.queryHits;
+  const list = DATA[state.lens];
+  if(!Array.isArray(list)) return [];
+  return [...list].sort((a,b)=>b.score-a.score);
+}
+
+function renderFindings(){
+  const host = document.getElementById('findings');
+  const L = LENSES.find(x=>x.key===state.lens);
+  if(state.queryHits){
+    document.getElementById('lens-title').textContent = 'Query results';
+    document.getElementById('lens-sub').textContent = state.queryHits.length+' traceable hits';
+  } else {
+    document.getElementById('lens-title').textContent = L ? L.title : '';
+    document.getElementById('lens-sub').textContent = L ? L.sub : '';
+  }
+  host.innerHTML='';
+  const list = activeList();
+  if(!list.length){ host.innerHTML='<div class="src-empty">No matches in the corpus.</div>'; return; }
+  list.forEach((f,i)=>{
+    const card = document.createElement('div');
+    card.className = 'find k-'+f.kind;
+    card.id = 'find-'+i;
+    card.setAttribute('role','button'); card.tabIndex=0;
+    card.setAttribute('aria-selected', state.selected===f);
+    let right='';
+    if(f.kind==='anomaly'||f.kind==='suspicious'){
+      const pct = Math.round(100*f.score/maxAnom);
+      const col = f.kind==='suspicious' ? 'var(--danger)' : 'var(--signal)';
+      right = `<span class="sev"><span class="bar"><i style="width:${pct}%;background:${col}"></i></span><span class="v" style="color:${col}">${f.score.toFixed(2)}</span></span>`;
+    } else if(f.kind==='topology'){
+      const pct = list.length ? Math.round(100*f.score/Math.max(...list.map(x=>x.score),0.001)) : 0;
+      right = `<span class="sev"><span class="bar"><i style="width:${pct}%;background:var(--tda)"></i></span><span class="v" style="color:var(--tda)">${f.score.toFixed(4)}</span></span>`;
+    } else if(f.kind==='query'){
+      right = `<span class="chip">sim ${f.score.toFixed(2)}</span>`;
+    } else {
+      right = `<span class="chip">${f.sources.length} src</span>`;
+    }
+
+    let why='';
+    if((f.kind==='anomaly'||f.kind==='suspicious') && f.extra && f.extra.terms && f.extra.terms.length){
+      why = `<div class="why">flagged by <span>${f.extra.terms.slice(0,5).map(esc).join('</span><span>')}</span></div>`;
+    }
+    let kw='';
+    if(f.kind==='suspicious' && f.extra && f.extra.keywords && f.extra.keywords.length){
+      kw = `<div class="keywords">matched <span>${f.extra.keywords.map(esc).join('</span><span>')}</span></div>`;
+    }
+    let tdaChips='';
+    if(f.kind==='anomaly'||f.kind==='suspicious'){
+      const iso  = f.extra&&f.extra.iso_score!=null     ? `iso:${f.extra.iso_score.toFixed(3)}`     : null;
+      const ae   = f.extra&&f.extra.ae_error!=null      ? `ae:${f.extra.ae_error.toFixed(4)}`       : null;
+      const topo = f.extra&&f.extra.topo_entropy!=null  ? `topo:${f.extra.topo_entropy.toFixed(4)}` : null;
+      const chips = [iso,ae,topo].filter(Boolean);
+      if(chips.length) tdaChips = `<div class="tda-chips"><span>${chips.join('</span><span>')}</span></div>`;
+    }
+
+    card.innerHTML = `<div class="ft"><span class="title">${esc(f.title)}</span>${right}</div>
+      <div class="detail">${esc(f.detail)}</div>
+      ${kw}${why}${tdaChips}
+      <div class="meta">${f.sources.length} source${f.sources.length>1?'s':''} · click to trace</div>`;
+    const sel = ()=>{ state.selected=f;
+      if(state.lens==='relationships') state.rtab='graph';
+      render(); };
+    card.onclick = sel;
+    card.onkeydown = e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault();sel();} };
+    host.appendChild(card);
+  });
+}
+
+// ---------- render source trail ----------
+function renderSource(){
+  const host = document.getElementById('source');
+  const f = state.selected;
+  const GRAPH_LENSES = ['suspicious','anomalies','relationships','themes','topology'];
+  if(!f){
+    if(GRAPH_LENSES.includes(state.lens) && !state.queryHits){ host.innerHTML=''; return; }
+    host.innerHTML = `<div class="src-empty"><b>Select any finding to trace it.</b>
+      Every cluster, anomaly and link resolves to the exact source records it was derived from —
+      nothing is generated, everything is evidence.</div>`;
+    return;
+  }
+  if(f.kind==='topology'){
+    // topology findings have no source docs — show the TDA detail panel
+    host.innerHTML = _renderTopologyDetail(f);
+    return;
+  }
+  const ids = f.sources;
+  const terms = termsFor(f);
+  const cls = f.kind==='relationship' ? 'rel' : '';
+  let html = `<div class="trail-head"><span class="ttl">Audit trail</span>
+      <span class="ct">${ids.length} source${ids.length>1?'s':''}</span><span class="ln"></span></div>`;
+  ids.slice(0,40).forEach(id=>{
+    const d = docById[id]; if(!d) return;
+    const am = d.anomaly>=0.6 ? `<span class="am">▲ ${d.anomaly.toFixed(2)}</span>` : '';
+    html += `<div class="evidence" data-doc="${id}">
+      <div class="eid"><span>${id}</span><span class="ch"><span>${d.meta.channel} · ${d.meta.date}</span>${am}</span></div>
+      <div>${highlight(d.text, terms, cls)}</div></div>`;
+  });
+  host.innerHTML = html;
+}
+
+function _renderTopologyDetail(f){
+  const tda = DATA.meta.tda || {};
+  if(!tda.available) return `<div class="src-empty"><b>ripser not available.</b>${f.detail}</div>`;
+  const maxP = tda.max_persistence || 0.001;
+  const feats = tda.h1_features || [];
+  let rows = feats.map((h,i)=>`<div class="h1-row">
+    <span class="ph">${h.persistence.toFixed(4)}</span>
+    <div style="flex:1"><div class="topo-bar"><i style="width:${Math.round(100*h.persistence/maxP)}%"></i></div></div>
+    <span class="span">[${h.birth.toFixed(3)}, ${h.death.toFixed(3)}]</span>
+  </div>`).join('');
+  return `<div style="padding:0 2px">
+    <div class="trail-head"><span class="ttl">Topological fingerprint</span><span class="ln"></span></div>
+    <div class="topo-panel">
+      <div class="topo-head">Persistent Homology (ripser)</div>
+      <div class="topo-row">
+        <div class="topo-stat"><div class="tv">${tda.betti_0}</div><div class="tl">Betti-0 (components)</div></div>
+        <div class="topo-stat"><div class="tv">${tda.betti_1}</div><div class="tl">Betti-1 (loops)</div></div>
+        <div class="topo-stat"><div class="tv">${tda.max_persistence!=null?tda.max_persistence.toFixed(3):'—'}</div><div class="tl">max persistence</div></div>
+      </div>
+      ${feats.length ? `<div class="topo-bar-lbl">H1 features ranked by persistence</div><div class="h1-list">${rows}</div>` : '<div class="unavail">No finite H1 features found.</div>'}
+    </div>
+    <div style="font-size:12px;color:var(--mute);line-height:1.6;padding:0 2px">
+      <b style="color:var(--text)">What this means:</b> Persistent H1 loops indicate sub-groups of documents
+      that share language enough to form a cycle but not enough to fully merge — a topological signal
+      of coordinated but distributed activity. High Betti-0 means fragmented, low-connectivity corpus.
+      This signal complements the statistical anomaly scores above.
+    </div>
+  </div>`;
+}
+
+// ---------- graph ----------
+function renderGraph(){
+  const host   = document.getElementById('graphHost');
+  const rtabs  = document.getElementById('rtabs');
+  const source = document.getElementById('source');
+
+  if(state.queryHits){ host.innerHTML=''; rtabs.style.display='none'; source.style.display=''; return; }
+
+  const GRAPH_LENSES = ['suspicious','anomalies','relationships','themes','topology'];
+  if(!GRAPH_LENSES.includes(state.lens)){ host.innerHTML=''; rtabs.style.display='none'; source.style.display=''; return; }
+
+  rtabs.style.display = state.selected ? 'flex' : 'none';
+  if(state.selected){
+    document.getElementById('rtab-trail-ct').textContent = state.selected.sources.length;
+    host.style.display='';
+    switchRTab(state.rtab==='trail' ? 'trail' : 'graph');
+  } else {
+    state.rtab='graph';
+    host.style.display='';
+    source.style.display='none';
+  }
+
+  if(state.lens==='relationships')  _graphRelationships(host);
+  else if(state.lens==='themes')    _graphThemes(host);
+  else if(state.lens==='topology')  _graphTopology(host);
+  else                              _graphScatter(host, state.lens);
+}
+
+// scatter for anomalies / suspicious
+function _graphScatter(host, lens){
+  const items = DATA[lens];
+  if(!items||!items.length){ host.innerHTML=''; return; }
+  const W=400, H=260, PAD={t:24,r:20,b:32,l:44};
+  const iw=W-PAD.l-PAD.r, ih=H-PAD.t-PAD.b;
+  const sorted = [...items].sort((a,b)=>{
+    const da=(a.extra&&a.extra.meta&&a.extra.meta.date)||'';
+    const db=(b.extra&&b.extra.meta&&b.extra.meta.date)||'';
+    return da.localeCompare(db);
+  });
+  const maxScore = Math.max(...sorted.map(s=>s.score), 0.001);
+  const color = lens==='suspicious' ? 'var(--danger)' : 'var(--signal)';
+  const selId = state.selected ? state.selected.sources[0] : null;
+  let svg = `<div class="graphwrap"><svg viewBox="0 0 ${W} ${H}" style="display:block;width:100%;height:auto">`;
+  svg += `<line x1="${PAD.l}" y1="${PAD.t}" x2="${PAD.l}" y2="${PAD.t+ih}" stroke="var(--line)" stroke-width="1"/>`;
+  svg += `<line x1="${PAD.l}" y1="${PAD.t+ih}" x2="${PAD.l+iw}" y2="${PAD.t+ih}" stroke="var(--line)" stroke-width="1"/>`;
+  svg += `<text x="${PAD.l-6}" y="${PAD.t+4}" text-anchor="end" font-size="9" fill="var(--faint)">1.0</text>`;
+  svg += `<text x="${PAD.l-6}" y="${PAD.t+ih}" text-anchor="end" font-size="9" fill="var(--faint)">0</text>`;
+  svg += `<text x="${PAD.l+iw/2}" y="${H-4}" text-anchor="middle" font-size="9" fill="var(--faint)">documents (by date)</text>`;
+  svg += `<text x="10" y="${PAD.t+ih/2}" text-anchor="middle" font-size="9" fill="var(--faint)" transform="rotate(-90,10,${PAD.t+ih/2})">score</text>`;
+  sorted.forEach((f,i)=>{
+    const x = PAD.l + (i+0.5)*(iw/sorted.length);
+    const y = PAD.t + ih*(1 - f.score/maxScore);
+    const docId = f.sources[0];
+    const isSel = docId===selId;
+    const op = selId ? (isSel?1:0.25) : 0.85;
+    const r  = isSel ? 7 : 5;
+    svg += `<g class="snode" data-idx="${i}" style="cursor:pointer;opacity:${op}">
+      <circle cx="${x}" cy="${y}" r="${r}" fill="${color}" ${isSel?'stroke="#fff" stroke-width="1.5"':''}/>
+      ${isSel?`<text x="${x}" y="${y-11}" text-anchor="middle" font-size="9" fill="${color}">${esc(docId)}</text>`:''}
+    </g>`;
+  });
+  svg += `</svg></div>
+  <div style="font-size:11px;color:var(--mute);margin:0 4px 10px">
+    Each dot = one document · y-axis = ${lens==='suspicious'?'suspicion':'anomaly'} score · click to trace
+  </div>`;
+  host.innerHTML = svg;
+  host.querySelectorAll('.snode').forEach((g,i)=>{
+    g.onclick=()=>{ state.selected=sorted[parseInt(g.getAttribute('data-idx'))]; state.rtab='trail'; render(); };
+  });
+}
+
+// bubble chart for DBSCAN clusters — grid layout with non-overlapping cells
+function _graphThemes(host){
+  const themes = DATA.themes;
+  if(!themes||!themes.length){ host.innerHTML=''; return; }
+  const COLORS=['#5E9CA6','#9C7BC4','#6BAF8A','#C47B7B','#A69C5E','#7B9CC4','#C49C7B',
+                '#7BC4A0','#C4A67B','#9CC47B','#C47BA6','#7BA6C4','#C4C47B','#A07BC4',
+                '#7BC4C4','#C47B9C','#8AC47B','#C4917B','#7B8AC4','#BDBDBD'];
+
+  // sort largest first so big bubbles get placed first
+  const sorted = themes.slice().sort((a,b)=>b.score-a.score);
+  const n = sorted.length;
+  const cols = n <= 4 ? 2 : n <= 9 ? 3 : n <= 16 ? 4 : 5;
+  const rows = Math.ceil(n / cols);
+
+  // cell size: make cells square, radius fits with padding
+  const CELL = 88;        // px per cell — enough for largest bubble + label
+  const W = cols * CELL;
+  const H = rows * CELL;
+
+  const maxDocs = Math.max(...sorted.map(t=>t.score));
+  const selTitle = state.selected ? state.selected.title : null;
+
+  let svg = `<div class="graphwrap"><svg viewBox="0 0 ${W} ${H}" style="display:block;width:100%;height:auto">`;
+
+  sorted.forEach((t, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const cx  = col * CELL + CELL / 2;
+    const cy  = row * CELL + CELL / 2;
+
+    // radius: min 18, max 36 — always fits inside the cell with 4px padding
+    const rMax = CELL / 2 - 6;
+    const rMin = Math.max(14, rMax * 0.35);
+    const r    = rMin + (rMax - rMin) * (t.score / maxDocs);
+
+    const color  = COLORS[i % COLORS.length];
+    const isSel  = t.title === selTitle;
+    const op     = selTitle ? (isSel ? 1 : 0.35) : 0.9;
+
+    // label: up to 2 terms, clipped to fit inside the bubble diameter
+    const rawTerms = t.extra && t.extra.terms ? t.extra.terms.slice(0, 2) : [t.title.replace('Cluster: ','')];
+    // truncate each term so the combined string ≤ ~18 chars
+    const label = rawTerms.map(w => w.length > 9 ? w.slice(0,8)+'…' : w).join(', ');
+    const fs    = r >= 28 ? 9 : r >= 20 ? 8 : 7;   // font shrinks with bubble
+
+    // selected ring
+    const ring = isSel ? `<circle cx="${cx}" cy="${cy}" r="${r+4}" fill="none" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.6"/>` : '';
+
+    svg += `<g class="tnode" data-idx="${i}" style="cursor:pointer;opacity:${op}">
+      ${ring}
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}" fill-opacity="0.18" stroke="${color}" stroke-width="${isSel ? 2.5 : 1.5}"/>
+      <text x="${cx}" y="${cy - 4}" text-anchor="middle" dominant-baseline="auto"
+            font-size="${fs}" fill="${color}" font-weight="${isSel ? 700 : 500}"
+            clip-path="url(#cp${i})">${esc(label)}</text>
+      <text x="${cx}" y="${cy + fs + 2}" text-anchor="middle" dominant-baseline="auto"
+            font-size="${fs - 1}" fill="var(--faint)">${t.score | 0} docs</text>
+    </g>`;
+  });
+
+  // clip paths to keep text inside bubbles
+  svg += `<defs>`;
+  sorted.forEach((t, i) => {
+    const col = i % cols, row = Math.floor(i / cols);
+    const cx  = col * CELL + CELL / 2, cy = row * CELL + CELL / 2;
+    const rMax = CELL / 2 - 6, rMin = Math.max(14, rMax * 0.35);
+    const r    = rMin + (rMax - rMin) * (t.score / maxDocs);
+    svg += `<clipPath id="cp${i}"><circle cx="${cx}" cy="${cy}" r="${r - 3}"/></clipPath>`;
+  });
+  svg += `</defs></svg></div>`;
+
+  svg += `<div style="font-size:11px;color:var(--mute);margin:0 4px 10px">
+    DBSCAN clusters · bubble size = document count · click a cluster to trace its sources
+  </div>`;
+
+  host.innerHTML = svg;
+  host.querySelectorAll('.tnode').forEach(g => {
+    const idx  = parseInt(g.getAttribute('data-idx'));
+    const orig = themes.indexOf(sorted[idx]);
+    g.onclick = () => {
+      state.selected = sorted[idx];
+      state.rtab = 'trail';
+      render();
+    };
+  });
+}
+
+// persistence barcode diagram for topology
+function _graphTopology(host){
+  const tda = DATA.meta.tda || {};
+  if(!tda.available){
+    host.innerHTML=`<div class="graphwrap" style="padding:18px;color:var(--mute);font-size:12px">
+      ripser not available — install with <code>pip install ripser</code></div>`;
+    return;
+  }
+  const feats = tda.h1_features || [];
+  const betti0 = tda.betti_0||0, betti1 = tda.betti_1||0;
+  const W=380, H=Math.max(80, feats.length*26+50), PAD={t:30,r:20,b:24,l:44};
+  const iw=W-PAD.l-PAD.r;
+  const maxDeath = Math.max(...feats.map(f=>f.death), tda.max_persistence||0, 0.1);
+  const selIdx = state.selected ? (state.selected.extra.index||0) : -1;
+
+  let svg = `<div class="graphwrap"><svg viewBox="0 0 ${W} ${H}" style="display:block;width:100%;height:auto">`;
+  svg += `<text x="${PAD.l+iw/2}" y="14" text-anchor="middle" font-size="10" fill="var(--tda)" font-weight="600">Persistence Barcode — H1 features</text>`;
+  svg += `<text x="${PAD.l}" y="${PAD.t-4}" text-anchor="start" font-size="8" fill="var(--faint)">0</text>`;
+  svg += `<text x="${W-PAD.r}" y="${PAD.t-4}" text-anchor="end" font-size="8" fill="var(--faint)">${maxDeath.toFixed(2)}</text>`;
+  svg += `<line x1="${PAD.l}" y1="${H-PAD.b}" x2="${PAD.l+iw}" y2="${H-PAD.b}" stroke="var(--line)" stroke-width="1"/>`;
+
+  if(!feats.length){
+    svg += `<text x="${PAD.l+iw/2}" y="${H/2}" text-anchor="middle" font-size="10" fill="var(--faint)">No H1 features detected</text>`;
+  } else {
+    feats.forEach((h,i)=>{
+      const y = PAD.t + i*26;
+      const x1 = PAD.l + (h.birth/maxDeath)*iw;
+      const x2 = PAD.l + (h.death/maxDeath)*iw;
+      const isSel = i===selIdx;
+      const op = selIdx>=0 ? (isSel?1:0.4) : 0.9;
+      svg += `<g class="bnode" data-idx="${i}" style="cursor:pointer;opacity:${op}">
+        <rect x="${PAD.l}" y="${y+2}" width="${iw}" height="18" fill="transparent"/>
+        <line x1="${x1}" y1="${y+11}" x2="${x2}" y2="${y+11}"
+          stroke="var(--tda)" stroke-width="${isSel?4:2.5}" stroke-linecap="round"/>
+        <text x="${PAD.l-4}" y="${y+15}" text-anchor="end" font-size="8" fill="var(--faint)">${i+1}</text>
+        <text x="${x2+4}" y="${y+15}" font-size="7.5" fill="var(--tda)">${h.persistence.toFixed(3)}</text>
+      </g>`;
+    });
+  }
+  svg += `</svg></div>
+  <div style="font-size:11px;color:var(--mute);margin:0 4px 10px">
+    Betti-0: <span style="color:var(--tda)">${betti0}</span> components ·
+    Betti-1: <span style="color:var(--tda)">${betti1}</span> loops ·
+    longer bars = more persistent structure · click a bar to inspect
+  </div>`;
+  host.innerHTML = svg;
+  host.querySelectorAll('.bnode').forEach((g)=>{
+    g.onclick=()=>{
+      const idx = parseInt(g.getAttribute('data-idx'));
+      state.selected = DATA.topology[idx]||null;
+      state.rtab='trail';
+      render();
+    };
+  });
+}
+
+// relationship network
+function _graphRelationships(host){
+  const {nodes, edges} = DATA.graph;
+  const W=360, H=300, cx=W/2, cy=H/2, R=110;
+  const pos = {};
+  nodes.forEach((n,i)=>{
+    const a=(i/nodes.length)*Math.PI*2 - Math.PI/2;
+    pos[n.id]={x:cx+R*Math.cos(a), y:cy+R*Math.sin(a)};
+  });
+
+  // separate suspicious vs anomaly-only exposure per actor
+  const suspDocSet = new Set((DATA.suspicious||[]).map(f=>f.sources[0]));
+  const anomDocSet = new Set((DATA.anomalies||[]).map(f=>f.sources[0]));
+  const actorSuspExp = {}, actorAnomExp = {};
+  edges.forEach(e=>{
+    (e.sources||[]).forEach(s=>{
+      if(suspDocSet.has(s)){ actorSuspExp[e.a]=(actorSuspExp[e.a]||0)+1; actorSuspExp[e.b]=(actorSuspExp[e.b]||0)+1; }
+      else if(anomDocSet.has(s)){ actorAnomExp[e.a]=(actorAnomExp[e.a]||0)+1; actorAnomExp[e.b]=(actorAnomExp[e.b]||0)+1; }
+    });
+  });
+
+  const selA = state.selected ? state.selected.extra.a : null;
+  const selB = state.selected ? state.selected.extra.b : null;
+  const hasSel = !!(selA && selB);
+  let svg = `<div class="graphwrap"><svg class="graph" viewBox="0 0 ${W} ${H}">`;
+  edges.forEach(e=>{
+    const p1=pos[e.a], p2=pos[e.b]; if(!p1||!p2) return;
+    const isSel = hasSel && ((e.a===selA&&e.b===selB)||(e.a===selB&&e.b===selA));
+    svg += `<line class="gedge" x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}"
+      stroke="var(--relate)" stroke-width="${isSel?Math.min(4,e.w)+2:Math.min(4,e.w)}"
+      stroke-opacity="${hasSel?(isSel?1:0.12):0.7}"/>`;
+  });
+  const maxDocs = Math.max(...nodes.map(x=>x.docs));
+  nodes.forEach(n=>{
+    const p=pos[n.id];
+    const r=5+9*(n.docs/maxDocs);
+    const isSel=hasSel&&(n.id===selA||n.id===selB);
+    const isSupp = (actorSuspExp[n.id]||0) > 0;
+    const isAnom = !isSupp && (actorAnomExp[n.id]||0) > 0;
+    const nodeColor = isSel?'var(--relate)' : isSupp?'var(--danger)' : isAnom?'var(--signal)' : 'var(--panel2)';
+    const labelColor = isSel?'var(--relate)' : isSupp?'var(--danger)' : isAnom?'var(--signal)' : 'var(--mute)';
+    const rr=isSel?r+3:r;
+    svg += `<g class="gnode" data-actor="${n.id}" style="cursor:pointer;opacity:${hasSel&&!isSel?0.2:1}">
+      <rect x="${p.x-40}" y="${p.y-rr-18}" width="80" height="${rr*2+26}" fill="transparent"/>
+      <circle cx="${p.x}" cy="${p.y}" r="${rr}" fill="${nodeColor}" ${isSel?'stroke="var(--relate)" stroke-width="2"':''}/>
+      <text x="${p.x}" y="${p.y-rr-5}" text-anchor="middle"
+        style="fill:${labelColor};font-weight:${isSel?700:400}">${esc(n.id)}</text>
+    </g>`;
+  });
+  svg += `</svg></div>
+  <div style="font-size:11.5px;color:var(--mute);margin:0 4px 12px;line-height:1.5">
+    Node size = documents touched · <span style="color:var(--danger)">red</span> = suspicious exposure · <span style="color:var(--signal)">amber</span> = anomaly exposure · dark = clean.</div>`;
+  host.innerHTML = svg;
+  host.querySelectorAll('.gnode').forEach(g=>{
+    g.onclick=()=>{
+      const actor = g.getAttribute('data-actor');
+      const rels = DATA.relationships.filter(r=>r.extra.a===actor||r.extra.b===actor).sort((a,b)=>b.score-a.score);
+      if(!rels.length) return;
+      const curIdx = rels.indexOf(state.selected);
+      const next = rels[(curIdx+1)%rels.length];
+      state.selected=next; state.rtab='graph'; render();
+      const sorted=[...DATA.relationships].sort((a,b)=>b.score-a.score);
+      const idx=sorted.indexOf(next);
+      const cards=document.querySelectorAll('#findings .find');
+      if(cards[idx]) cards[idx].scrollIntoView({block:'nearest',behavior:'smooth'});
+    };
+  });
+}
+
+// ---------- trace lines ----------
+function drawTrace(){
+  const svg=document.getElementById('trace'), path=document.getElementById('tracePath');
+  if(!state.selected||window.innerWidth<=880||state.rtab==='graph'||state.lens==='topology'){
+    path.setAttribute('d',''); return;
+  }
+  const sel=document.querySelector('.find[aria-selected="true"]');
+  const ev=[...document.querySelectorAll('.evidence')].slice(0,6);
+  if(!sel||!ev.length){ path.setAttribute('d',''); return; }
+  const work=document.querySelector('.work').getBoundingClientRect();
+  const a=sel.getBoundingClientRect();
+  const x1=a.right-work.left, y1=a.top-work.top+a.height/2;
+  let d='';
+  ev.forEach(e=>{
+    const b=e.getBoundingClientRect();
+    const x2=b.left-work.left, y2=b.top-work.top+Math.min(b.height/2,18);
+    const mx=(x1+x2)/2;
+    d+=`M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2} `;
+  });
+  path.setAttribute('d',d);
+}
+
+// ---------- live query ----------
+let qt;
+async function runQuery(q){
+  q=q.trim();
+  if(!q){ state.queryHits=null; render(); return; }
+  const res = await fetch('/api/query', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({q, top:8})
+  });
+  if(!res.ok) return;
+  const hits = await res.json();
+  state.queryHits=hits; state.selected=hits[0]||null; render();
+}
+
+// ---------- master render ----------
+function render(){
+  if(!DATA) return;
+  renderRail(); renderGraph(); renderFindings(); renderSource();
+  requestAnimationFrame(drawTrace);
+}
+
+// ---------- init ----------
+async function init(){
+  const [findings, documents] = await Promise.all([
+    fetch('/api/findings').then(r=>r.json()),
+    fetch('/api/documents').then(r=>r.json()),
+  ]);
+  DATA = {...findings, documents};
+  initDerivedState();
+
+  document.getElementById('s-docs').textContent = DATA.meta.n_docs;
+  document.getElementById('f-docs').textContent = DATA.meta.n_docs;
+  const tda = DATA.meta.tda||{};
+  document.getElementById('s-betti1').textContent = tda.betti_1!=null ? tda.betti_1 : '—';
+  document.getElementById('f-graphdb').textContent = DATA.meta.graph_backend || '—';
+
+  document.getElementById('q').addEventListener('input', e=>{
+    clearTimeout(qt); qt=setTimeout(()=>runQuery(e.target.value), 160);
+  });
+  window.addEventListener('resize', ()=>requestAnimationFrame(drawTrace));
+  document.querySelector('.center').addEventListener('scroll', ()=>requestAnimationFrame(drawTrace), {passive:true});
+  document.getElementById('sourceCol').addEventListener('scroll', ()=>requestAnimationFrame(drawTrace), {passive:true});
+
+  state.selected = [...DATA.anomalies].sort((a,b)=>b.score-a.score)[0];
+  render();
+}
+
+init();
+
+// ---------- file upload ----------
+function _toast(msg, type){
+  const t = document.getElementById('upload-toast');
+  t.textContent = msg;
+  t.className = 'upload-toast ' + type;
+  t.style.display = 'block';
+  clearTimeout(t._tid);
+  t._tid = setTimeout(()=>{ t.style.display='none'; }, type==='ok' ? 3500 : 6000);
+}
+
+document.getElementById('upload-input').addEventListener('change', async function(){
+  const file = this.files[0]; if(!file) return;
+  const btn = document.getElementById('upload-btn');
+  btn.textContent = '⟳ analysing…'; btn.classList.add('loading');
+  _toast('Uploading and running TDA engine on ' + file.name + ' …', '');
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch('/api/upload', {method:'POST', body:fd});
+    const json = await res.json();
+    if(!res.ok){ _toast('Error: ' + (json.detail||res.statusText), 'err'); return; }
+    DATA = {...json.findings, documents: json.documents};
+    initDerivedState();
+    document.getElementById('s-docs').textContent = DATA.meta.n_docs;
+    document.getElementById('f-docs').textContent = DATA.meta.n_docs;
+    const tda = DATA.meta.tda||{};
+    document.getElementById('s-betti1').textContent = tda.betti_1!=null ? tda.betti_1 : '—';
+    document.getElementById('f-graphdb').textContent = DATA.meta.graph_backend || '—';
+    state.selected = [...DATA.anomalies].sort((a,b)=>b.score-a.score)[0] || null;
+    state.queryHits = null;
+    document.getElementById('q').value = '';
+    render();
+    _toast('Loaded ' + json.n_docs + ' docs from ' + file.name, 'ok');
+  } catch(e){
+    _toast('Upload failed: ' + e.message, 'err');
+  } finally {
+    btn.textContent = '↑ load corpus'; btn.classList.remove('loading');
+    this.value = '';
+  }
+});
+</script>
+</body>
+</html>

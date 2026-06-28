@@ -1,0 +1,30 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[[source]]
+url = "https://download.pytorch.org/whl/cpu"
+verify_ssl = true
+name = "pytorch-cpu"
+
+[packages]
+scikit-learn = "*"
+numpy = "*"
+fastapi = "*"
+uvicorn = {extras = ["standard"], version = "*"}
+python-multipart = "*"
+ripser = "*"
+giotto-tda = "*"
+neo4j = "*"
+tika = "*"
+pdfplumber = "*"
+pandas = "*"
+openpyxl = "*"
+pyyaml = "*"
+torch = {version = "*", index = "pytorch-cpu"}
+
+[dev-packages]
+
+[requires]
+python_version = "3.11"
