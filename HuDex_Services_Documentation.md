@@ -129,6 +129,8 @@ Ingest → TF-IDF → DBSCAN → IsolationForest + Autoencoder + Topology + Keyw
 | Entity extraction | Regex (Unicode) | Same as Demo |
 | Relationships | Co-occurrence | `min_shared=1` document |
 | Graph storage | Neo4j bolt | Falls back to in-memory if Neo4j unreachable |
+| Corpus shape | KeplerMapper Mapper algorithm | Interactive HTML at `/api/topology-map` |
+| Drift detection | GUDHI bottleneck + Wasserstein distance | Compares H1 diagrams across uploads |
 
 ### Anomaly score formula
 ```
@@ -144,6 +146,29 @@ score = 0.30 × IsolationForest + 0.25 × Autoencoder_reconstruction_error
 | Handles noise docs | No (every doc assigned) | Yes (noise = cluster -1) |
 | Cluster shape | Spherical | Arbitrary |
 | Result | 8 themes | 16 clusters + 23 noise docs |
+
+### Additional features (TDA only)
+
+**Corpus Map tab** — KeplerMapper renders the document corpus as an interactive graph. Nodes are clusters of similar documents; edges link overlapping neighbourhoods. Loaded lazily on first tab click from `/api/topology-map`.
+
+**Drift detection** — every upload computes the topological distance between the previous corpus and the new one using GUDHI Wasserstein distance on H1 persistence diagrams. The previous corpus becomes the new baseline after each upload.
+
+| Drift label | Wasserstein score | Meaning |
+|---|---|---|
+| None | < 0.05 | Corpus shape unchanged |
+| Minimal | < 0.15 | Small structural shift |
+| Moderate | < 0.30 | Noticeable shape change |
+| Significant | < 0.50 | Major structural change |
+| Major | ≥ 0.50 | Corpus fundamentally different |
+
+On ARM64 (no GUDHI wheel), drift falls back to mean-persistence difference.
+
+### REST API — TDA-only endpoints
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/topology-map` | KeplerMapper interactive HTML corpus graph |
+
+Upload response also includes a `drift` object: `{bottleneck, wasserstein, label, gudhi_available}`.
 
 ### Current stats (112 docs)
 - Clusters: **16** | Noise docs: **23**
@@ -175,6 +200,22 @@ docker build --platform linux/amd64 -t hudex-tda .
 
 ---
 
+## TDA Libraries
+
+### Ripser.py
+Fast, lean library in terms of memory and compute for computing Vietoris-Rips persistent homology. The workhorse for all corpus-level and per-document H0/H1 diagrams across all three services. Falls back from giotto-tda on ARM64.
+
+### giotto-tda
+High-performance library designed to integrate TDA with machine learning pipelines (scikit-learn API compatible). Used in the TDA engine for per-document `VietorisRipsPersistence + PersistenceEntropy` on each document's k-NN subgraph. Runs parallelised C++ extensions (`n_jobs=-1`) on amd64; ripser fallback on ARM64 where no wheel is available.
+
+### KeplerMapper
+Go-to Python implementation of the Mapper algorithm, offering interactive HTML visualisations of data shapes. Used in the TDA engine's Corpus Map tab (`/api/topology-map`) to render the document corpus as a navigable graph — nodes are document clusters, edges connect overlapping neighbourhoods. Installed with `--no-deps` to avoid the openmp build conflict on ARM64.
+
+### GUDHI
+Robust C++/Python library backed by INRIA for computing persistent homology and geometric complexes. Used for drift detection in the TDA engine: bottleneck distance and Wasserstein distance compare H1 persistence diagrams between the previous corpus and a newly uploaded one. No prebuilt wheel for linux/arm64 — falls back to mean-persistence comparison when unavailable.
+
+---
+
 ## Technology Stack
 
 | Layer | Technology | Used by |
@@ -189,6 +230,8 @@ docker build --platform linux/amd64 -t hudex-tda .
 | Anomaly detection | PyTorch Autoencoder (MLP) | TDA |
 | Persistent homology | ripser | All 3 |
 | Per-doc topology pipeline | giotto-tda 0.6.2 | TDA (amd64); ripser fallback on ARM64 |
+| Corpus shape visualisation | KeplerMapper | TDA |
+| Drift detection | GUDHI + POT | TDA (mean-persistence fallback on ARM64) |
 | Document ingestion | Apache Tika (JVM) | All 3 |
 | PDF fallback | pdfplumber | All 3 |
 | XLSX ingestion | pandas + openpyxl | All 3 |
@@ -244,34 +287,38 @@ Loaded from `patterns.yml`. Covers financial crime language: `off the books`, `k
 
 ## Running the Services
 
-### Local (pipenv)
+All three services run in Docker. Use the `hudex.sh` script at `~/git/hudex.sh`:
+
 ```bash
-# First time — installs deps
-chmod +x ~/git/arlequin_ai_hudex_tda/run.sh \
-         ~/git/arlequin_ai_hudex_demo_prototype/run.sh \
-         ~/git/arlequin_ai_hudex_demo_prototype/run_prototype.sh \
-         ~/git/run_hudex_all.sh
-
-# Run all three
-~/git/run_hudex_all.sh
-
-# Or individually
-~/git/arlequin_ai_hudex_demo_prototype/run_prototype.sh   # 8003
-~/git/arlequin_ai_hudex_demo_prototype/run.sh             # 8001
-~/git/arlequin_ai_hudex_tda/run.sh                        # 8002
+# First time — make executable
+chmod +x ~/git/hudex.sh
 ```
 
-### Docker
 ```bash
-cd ~/git/arlequin_ai_hudex_demo_prototype && docker-compose up   # 8001
-cd ~/git/arlequin_ai_hudex_tda && docker-compose up             # 8002 + Neo4j
+~/git/hudex.sh start          # build + start all 3 services
+~/git/hudex.sh stop           # stop all
+~/git/hudex.sh status         # show running containers
+~/git/hudex.sh logs 8001      # tail logs for demo
+~/git/hudex.sh logs 8002      # tail logs for TDA engine
+~/git/hudex.sh logs 8003      # tail logs for prototype
 ```
 
-### Logs
-```bash
-tail -f /tmp/hudex_demo.log    # 8001
-tail -f /tmp/hudex_tda.log     # 8002
-tail -f /tmp/hudex_proto.log   # 8003
+| URL | Service |
+|---|---|
+| http://localhost:8001 | HuDex Demo |
+| http://localhost:8002 | HuDex TDA |
+| http://localhost:8003 | HuDex Prototype |
+
+### Docker compose files
+| Service | Compose file |
+|---|---|
+| 8002 + Neo4j | `arlequin_ai_hudex_tda/docker-compose.yml` |
+| 8001 + 8003 | `arlequin_ai_hudex_demo_prototype/docker-compose.yml` |
+
+### Test corpus
+```
+arlequin_ai_hudex_tda/patternengine/corpus.csv          # for 8002
+arlequin_ai_hudex_demo_prototype/patternengine/corpus.csv  # for 8001 / 8003
 ```
 
 ---
@@ -289,4 +336,6 @@ Demo (8001)
       ▼
 TDA Engine (8002)
   └─ Autoencoder, per-doc topology entropy, DBSCAN, Neo4j, 4-signal anomaly scoring
+  └─ KeplerMapper: interactive corpus shape visualisation (Corpus Map tab)
+  └─ GUDHI: drift detection — Wasserstein distance between H1 diagrams on each upload
 ```

@@ -81,3 +81,9 @@ patternengine/
 | `NEO4J_AUTH` | `neo4j/password` | Neo4j credentials |
 
 If Neo4j is unreachable the engine runs in in-memory mode — all analysis still works, relationships are not persisted across restarts.
+
+## Documentation
+
+- [`HuDex_TDA_README.md`](HuDex_TDA_README.md) — full technical reference (pipeline, API, algorithms, limitations)
+- [`HuDex_Services_Documentation.md`](HuDex_Services_Documentation.md) — all three services compared
+- [`HuDex_NewCorpus_Comparison.md`](HuDex_NewCorpus_Comparison.md) — detection benchmark on 104-doc corpus

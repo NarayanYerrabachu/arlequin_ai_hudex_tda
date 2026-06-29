@@ -23,6 +23,9 @@ pandas = "*"
 openpyxl = "*"
 pyyaml = "*"
 torch = {version = "*", index = "pytorch-cpu"}
+kmapper = "*"
+gudhi = "*"
+pot = "*"
 
 [dev-packages]
 

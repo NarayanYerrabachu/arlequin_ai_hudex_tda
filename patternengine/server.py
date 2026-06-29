@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from engine.sample_data import make_corpus
-from engine.core_tda import TDAPatternEngine
+from engine.core_tda import TDAPatternEngine, build_mapper_html, extract_h1_diagram, compute_drift
 from ingestion.loader import load_bytes
 
 # ---------------------------------------------------------------------------
@@ -71,6 +71,9 @@ def _build_state(docs):
 _eng, _documents, _themes, _anomalies, _suspicious, _rels, _nodes, _edges, _meta = \
     _build_state(make_corpus())
 
+# Baseline H1 diagram — compared against each upload, then replaced
+_baseline_diagram = extract_h1_diagram(_eng.X.toarray())
+
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
@@ -126,11 +129,22 @@ def run_query(req: QueryRequest) -> list[dict[str, Any]]:
     ]
 
 
+@app.get("/api/topology-map", response_class=HTMLResponse)
+def topology_map() -> HTMLResponse:
+    """Return a self-contained KeplerMapper interactive HTML graph."""
+    Xd = _eng.X.toarray()
+    html = build_mapper_html(Xd, _eng.labels, _eng.anomaly_scores)
+    if html is None:
+        return HTMLResponse(content="<p>kmapper not installed.</p>", status_code=200)
+    return HTMLResponse(content=html)
+
+
 @app.post("/api/upload")
 async def upload_corpus(file: UploadFile = File(...)) -> dict[str, Any]:
     """Accept a CSV / PDF / JSON / XML / TXT / XLSX file, re-run the engine,
     return the new findings immediately."""
     global _eng, _documents, _themes, _anomalies, _suspicious, _rels, _nodes, _edges, _meta
+    global _baseline_diagram
 
     data = await file.read()
     docs = load_bytes(data, file.filename or "upload.bin")
@@ -145,10 +159,16 @@ async def upload_corpus(file: UploadFile = File(...)) -> dict[str, Any]:
         _eng, _documents, _themes, _anomalies, _suspicious, _rels, _nodes, _edges, _meta = \
             _build_state(docs)
 
+        # Compute drift against previous corpus, then reset baseline
+        new_diagram = extract_h1_diagram(_eng.X.toarray())
+        drift = compute_drift(_baseline_diagram, new_diagram)
+        _baseline_diagram = new_diagram  # new corpus becomes the new baseline
+
     return {
         "ok": True,
         "filename": file.filename,
         "n_docs": len(docs),
+        "drift": drift,
         "findings": {
             "meta": _meta,
             "themes": _themes,

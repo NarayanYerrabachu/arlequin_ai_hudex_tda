@@ -53,6 +53,19 @@ try:
 except ImportError:
     _GIOTTO = False
 
+try:
+    import gudhi
+    import gudhi.wasserstein
+    _GUDHI = True
+except ImportError:
+    _GUDHI = False
+
+try:
+    import kmapper as km
+    _KMAPPER = True
+except ImportError:
+    _KMAPPER = False
+
 # --------------------------------------------------------------------------
 # Topology helpers
 # --------------------------------------------------------------------------
@@ -295,6 +308,117 @@ class _GraphStore:
     def close(self):
         if self._driver:
             self._driver.close()
+
+
+# --------------------------------------------------------------------------
+# Drift detection (GUDHI Wasserstein / Bottleneck distance)
+# --------------------------------------------------------------------------
+
+def extract_h1_diagram(Xd: np.ndarray) -> np.ndarray:
+    """Compute the H1 persistence diagram for a document matrix.
+    Returns array of shape (n_bars, 2) with [birth, death] rows.
+    Uses ripser if available, else returns empty array.
+    """
+    if not _RIPSER:
+        return np.empty((0, 2))
+    sample = Xd if len(Xd) <= 80 else Xd[
+        np.random.default_rng(42).choice(len(Xd), 80, replace=False)
+    ]
+    result = ripser(sample, maxdim=1, metric="cosine")
+    h1 = result["dgms"][1] if len(result["dgms"]) > 1 else np.empty((0, 2))
+    # remove infinite bars — GUDHI distance requires finite diagrams
+    return h1[h1[:, 1] < np.inf]
+
+
+def compute_drift(baseline_dgm: np.ndarray, new_dgm: np.ndarray) -> dict:
+    """Compare two H1 persistence diagrams using GUDHI.
+
+    Returns bottleneck distance, Wasserstein distance, and a human label.
+    Falls back to a simple persistence-vector comparison if GUDHI unavailable.
+    """
+    if not _GUDHI:
+        # simple fallback: compare mean persistence
+        def mean_pers(d): return float((d[:, 1] - d[:, 0]).mean()) if len(d) else 0.0
+        diff = abs(mean_pers(new_dgm) - mean_pers(baseline_dgm))
+        return {"bottleneck": round(diff, 4), "wasserstein": round(diff, 4),
+                "label": _drift_label(diff), "gudhi_available": False}
+
+    # GUDHI expects list of (birth, death) tuples; empty diagram = [(0,0)]
+    def to_gudhi(d):
+        return d.tolist() if len(d) else [[0.0, 0.0]]
+
+    bottleneck = gudhi.bottleneck_distance(to_gudhi(baseline_dgm), to_gudhi(new_dgm))
+    wasserstein = gudhi.wasserstein.wasserstein_distance(
+        np.array(to_gudhi(baseline_dgm)),
+        np.array(to_gudhi(new_dgm)),
+        order=1, internal_p=2,
+    )
+    return {
+        "bottleneck": round(float(bottleneck), 4),
+        "wasserstein": round(float(wasserstein), 4),
+        "label": _drift_label(float(wasserstein)),
+        "gudhi_available": True,
+    }
+
+
+def _drift_label(score: float) -> str:
+    if score < 0.05:  return "none"
+    if score < 0.15:  return "minimal"
+    if score < 0.30:  return "moderate"
+    if score < 0.50:  return "significant"
+    return "major"
+
+
+# --------------------------------------------------------------------------
+# Mapper graph (KeplerMapper)
+# --------------------------------------------------------------------------
+
+def build_mapper_html(Xd: np.ndarray, labels: np.ndarray | None = None,
+                      anomaly_scores: np.ndarray | None = None) -> str | None:
+    """Build a KeplerMapper interactive HTML graph of the document corpus.
+
+    Each node = a cluster of documents sharing similar vocabulary.
+    Edge = clusters that share at least one document (overlap).
+    Node colour = average anomaly score of documents inside it.
+    Returns None if kmapper is not installed.
+    """
+    if not _KMAPPER:
+        return None
+
+    from sklearn.decomposition import TruncatedSVD
+    from sklearn.preprocessing import MinMaxScaler
+    from sklearn.cluster import DBSCAN
+
+    # Project to 2D for the lens (filter function)
+    n_components = min(2, Xd.shape[1], Xd.shape[0] - 1)
+    lens = TruncatedSVD(n_components=n_components, random_state=42).fit_transform(Xd)
+    lens = MinMaxScaler().fit_transform(lens)
+
+    mapper = km.KeplerMapper(verbose=0)
+
+    graph = mapper.map(
+        lens,
+        Xd,
+        clusterer=DBSCAN(eps=0.5, min_samples=2, metric="cosine"),
+        cover=km.Cover(n_cubes=10, perc_overlap=0.5),
+    )
+
+    # Colour nodes by mean anomaly score — shape (n_docs, 1)
+    if anomaly_scores is not None:
+        amax = anomaly_scores.max() or 1.0
+        node_color_fn = (anomaly_scores / amax).reshape(-1, 1)
+        color_function_name = ["anomaly score"]
+    else:
+        node_color_fn = None
+        color_function_name = None
+
+    html = mapper.visualize(
+        graph,
+        title="Corpus shape — document neighbourhood map",
+        color_function=node_color_fn,
+        color_function_name=color_function_name,
+    )
+    return html
 
 
 # --------------------------------------------------------------------------

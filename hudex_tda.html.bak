@@ -20,7 +20,6 @@
     --theme:#A9B4C4;
     --tda:#9B7FD4;       /* topological purple */
     --ok:#6Fae8f;
-    --drift:#4EA8DE;
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
@@ -87,9 +86,6 @@
   .lens.rel  .dot{background:var(--relate)}
   .lens.theme .dot{background:var(--theme)}
   .lens.topo .dot{background:var(--tda)}
-  .lens.drift .dot{background:var(--drift)}
-  .find.k-drift[aria-selected="true"]{border-left-color:var(--drift)}
-  .find.k-drift .title{color:var(--drift)}
   .lens.query .dot{background:#fff}
 
   .col{min-height:0; overflow:auto; padding:14px}
@@ -241,7 +237,7 @@
     </div>
     <div class="stats">
       <div class="stat"><div class="n mono" id="s-docs">—</div><div class="l">records</div></div>
-      <div class="stat tda-stat"><div class="n mono" id="s-betti1">—</div><div class="l">circular patterns</div></div>
+      <div class="stat tda-stat"><div class="n mono" id="s-betti1">—</div><div class="l">H1 loops</div></div>
       <div class="stat clean"><div class="n mono">0</div><div class="l">hallucinations</div></div>
       <div class="stat"><div class="n mono">100%</div><div class="l">traceable</div></div>
     </div>
@@ -269,15 +265,9 @@
       <div class="rtabs" id="rtabs" style="display:none">
         <button class="rtab active" id="rtab-graph"   onclick="switchRTab('graph')">Graph</button>
         <button class="rtab"        id="rtab-trail"   onclick="switchRTab('trail')">Audit Trail <span id="rtab-trail-ct"></span></button>
-        <button class="rtab"        id="rtab-map"     onclick="switchRTab('map')">Corpus Map</button>
       </div>
       <div id="graphHost"></div>
       <div id="source"></div>
-      <div id="mapHost" style="display:none">
-        <iframe id="mapper-frame" src="" data-src="/api/topology-map"
-          style="width:100%;height:calc(100vh - 140px);border:none;background:#fff"
-          loading="lazy"></iframe>
-      </div>
     </section>
 
     <svg id="trace"><path id="tracePath" d=""></path></svg>
@@ -300,9 +290,7 @@ const LENSES = [
   {key:'anomalies',  cls:'anom',  label:'Anomalies',     title:'Anomalies',
      sub:'IsolationForest + Autoencoder outliers'},
   {key:'topology',   cls:'topo',  label:'Topology',      title:'Topology',
-     sub:'circular cross-referencing patterns in the corpus'},
-  {key:'drift',      cls:'drift', label:'Drift',         title:'Shape Drift',
-     sub:'structural change since last corpus upload'},
+     sub:'persistent homology H0/H1 fingerprint'},
   {key:'relationships', cls:'rel', label:'Relationships', title:'Relationships',
      sub:'actors that co-occur across records'},
   {key:'themes',     cls:'theme', label:'Clusters',      title:'DBSCAN Clusters',
@@ -315,15 +303,8 @@ function switchRTab(tab){
   state.rtab = tab;
   document.getElementById('rtab-graph').classList.toggle('active', tab==='graph');
   document.getElementById('rtab-trail').classList.toggle('active', tab==='trail');
-  document.getElementById('rtab-map').classList.toggle('active',   tab==='map');
   document.getElementById('graphHost').style.display = tab==='graph' ? '' : 'none';
   document.getElementById('source').style.display    = tab==='trail' ? '' : 'none';
-  document.getElementById('mapHost').style.display   = tab==='map'   ? '' : 'none';
-  // lazy-load the iframe the first time the tab is opened
-  if(tab==='map'){
-    const fr = document.getElementById('mapper-frame');
-    if(!fr.src || fr.src === window.location.href) fr.src = fr.getAttribute('data-src');
-  }
 }
 
 let docById = {};
@@ -335,8 +316,6 @@ function initDerivedState(){
 
   // inject topology as a pseudo-lens list
   if(!DATA.topology) DATA.topology = _buildTopologyFindings();
-  // inject drift as a pseudo-lens list
-  if(!DATA.drift) DATA.drift = _buildDriftFindings(null);
 }
 
 function _buildTopologyFindings(){
@@ -353,10 +332,10 @@ function _buildTopologyFindings(){
   (tda.h1_features||[]).forEach((h,i)=>{
     items.push({
       kind:'topology',
-      title:`Circular pattern #${i+1} — strength ${h.persistence.toFixed(4)}`,
-      detail:`A group of documents share overlapping language without belonging to a single topic. `+
-             `First detected at similarity ${h.birth.toFixed(4)}, fades at ${h.death.toFixed(4)}. `+
-             `Stronger patterns suggest coordinated or distributed activity across the corpus.`,
+      title:`H1 loop #${i+1} — persistence ${h.persistence.toFixed(4)}`,
+      detail:`Topological 1-cycle (loop) in the corpus embedding. Born at distance ${h.birth.toFixed(4)}, `+
+             `dies at ${h.death.toFixed(4)}. Persistent loops suggest sub-groups that share vocabulary `+
+             `without fully merging — potential hidden clusters or coordinated behaviour.`,
       score: h.persistence,
       sources:[],
       extra: {birth: h.birth, death: h.death, persistence: h.persistence, index: i},
@@ -364,51 +343,12 @@ function _buildTopologyFindings(){
   });
   if(!items.length){
     items.push({
-      kind:'topology', title:'No circular patterns detected',
-      detail:`The corpus forms one well-connected group with no significant indirect cross-referencing. `+
-             `Separate groups: ${tda.betti_0}, circular patterns: ${tda.betti_1}.`,
+      kind:'topology', title:'No persistent H1 features detected',
+      detail:`Betti-0=${tda.betti_0}, Betti-1=${tda.betti_1}. The corpus forms a single well-connected `+
+             `component with no significant loop structure at the sampled scale.`,
       score:0, sources:[], extra:{}
     });
   }
-  return items;
-}
-
-function _buildDriftFindings(drift){
-  if(!drift){
-    return [{
-      kind:'drift',
-      title:'No drift data yet',
-      detail:'Upload a corpus to compare its structure against the current one. Each upload is compared to the previous corpus shape, then becomes the new baseline.',
-      score:0, sources:[], extra:{},
-    }];
-  }
-  const labelColor = {'none':'var(--ok)','minimal':'var(--ok)','moderate':'var(--signal)','significant':'var(--signal)','major':'var(--danger)'};
-  const labelDesc = {
-    'none':       'The two corpora are structurally identical — same circular patterns, same shape.',
-    'minimal':    'Very minor structural differences. The corpora are essentially the same shape.',
-    'moderate':   'Noticeable structural change. Some circular patterns appeared or disappeared.',
-    'significant':'Substantial change in corpus shape. The document neighbourhood structure has shifted.',
-    'major':      'The corpora have fundamentally different shapes. This may indicate a completely different document set.',
-  };
-  const items = [{
-    kind:'drift',
-    title:`Shape drift: ${drift.label.toUpperCase()}`,
-    detail: labelDesc[drift.label] || '',
-    score: drift.wasserstein,
-    sources:[], extra: drift,
-  }];
-  items.push({
-    kind:'drift',
-    title:`Wasserstein distance: ${drift.wasserstein}`,
-    detail:'Average shift across all circular patterns between the two corpora. Lower = more similar shape.',
-    score: drift.wasserstein, sources:[], extra: drift,
-  });
-  items.push({
-    kind:'drift',
-    title:`Bottleneck distance: ${drift.bottleneck}`,
-    detail:'Largest single structural shift between the two corpora. Measures the worst-case change in any one circular pattern.',
-    score: drift.bottleneck, sources:[], extra: drift,
-  });
   return items;
 }
 
@@ -483,12 +423,6 @@ function renderFindings(){
     } else if(f.kind==='topology'){
       const pct = list.length ? Math.round(100*f.score/Math.max(...list.map(x=>x.score),0.001)) : 0;
       right = `<span class="sev"><span class="bar"><i style="width:${pct}%;background:var(--tda)"></i></span><span class="v" style="color:var(--tda)">${f.score.toFixed(4)}</span></span>`;
-    } else if(f.kind==='drift'){
-      const col = 'var(--drift)';
-      const pct = list.length ? Math.round(100*f.score/Math.max(...list.map(x=>x.score),0.001)) : 0;
-      right = f.score > 0
-        ? `<span class="sev"><span class="bar"><i style="width:${pct}%;background:${col}"></i></span><span class="v" style="color:${col}">${f.score.toFixed(4)}</span></span>`
-        : '';
     } else if(f.kind==='query'){
       right = `<span class="chip">sim ${f.score.toFixed(2)}</span>`;
     } else {
@@ -515,7 +449,7 @@ function renderFindings(){
     card.innerHTML = `<div class="ft"><span class="title">${esc(f.title)}</span>${right}</div>
       <div class="detail">${esc(f.detail)}</div>
       ${kw}${why}${tdaChips}
-      <div class="meta">${f.kind==='topology'||f.kind==='drift' ? 'whole corpus · click to inspect' : `${f.sources.length} source${f.sources.length>1?'s':''} · click to trace`}</div>`;
+      <div class="meta">${f.sources.length} source${f.sources.length>1?'s':''} · click to trace</div>`;
     const sel = ()=>{ state.selected=f;
       if(state.lens==='relationships') state.rtab='graph';
       render(); };
@@ -529,7 +463,7 @@ function renderFindings(){
 function renderSource(){
   const host = document.getElementById('source');
   const f = state.selected;
-  const GRAPH_LENSES = ['suspicious','anomalies','relationships','themes','topology','drift'];
+  const GRAPH_LENSES = ['suspicious','anomalies','relationships','themes','topology'];
   if(!f){
     if(GRAPH_LENSES.includes(state.lens) && !state.queryHits){ host.innerHTML=''; return; }
     host.innerHTML = `<div class="src-empty"><b>Select any finding to trace it.</b>
@@ -538,11 +472,8 @@ function renderSource(){
     return;
   }
   if(f.kind==='topology'){
+    // topology findings have no source docs — show the TDA detail panel
     host.innerHTML = _renderTopologyDetail(f);
-    return;
-  }
-  if(f.kind==='drift'){
-    host.innerHTML = _renderDriftDetail(f);
     return;
   }
   const ids = f.sources;
@@ -571,54 +502,21 @@ function _renderTopologyDetail(f){
     <span class="span">[${h.birth.toFixed(3)}, ${h.death.toFixed(3)}]</span>
   </div>`).join('');
   return `<div style="padding:0 2px">
-    <div class="trail-head"><span class="ttl">Structural pattern detail</span><span class="ln"></span></div>
+    <div class="trail-head"><span class="ttl">Topological fingerprint</span><span class="ln"></span></div>
     <div class="topo-panel">
-      <div class="topo-head">Structural pattern analysis</div>
+      <div class="topo-head">Persistent Homology (ripser)</div>
       <div class="topo-row">
-        <div class="topo-stat"><div class="tv">${tda.betti_0}</div><div class="tl">separate groups</div></div>
-        <div class="topo-stat"><div class="tv">${tda.betti_1}</div><div class="tl">circular patterns</div></div>
-        <div class="topo-stat"><div class="tv">${tda.max_persistence!=null?tda.max_persistence.toFixed(3):'—'}</div><div class="tl">strongest pattern</div></div>
+        <div class="topo-stat"><div class="tv">${tda.betti_0}</div><div class="tl">Betti-0 (components)</div></div>
+        <div class="topo-stat"><div class="tv">${tda.betti_1}</div><div class="tl">Betti-1 (loops)</div></div>
+        <div class="topo-stat"><div class="tv">${tda.max_persistence!=null?tda.max_persistence.toFixed(3):'—'}</div><div class="tl">max persistence</div></div>
       </div>
-      ${feats.length ? `<div class="topo-bar-lbl">Circular patterns ranked by strength</div><div class="h1-list">${rows}</div>` : '<div class="unavail">No circular patterns found.</div>'}
+      ${feats.length ? `<div class="topo-bar-lbl">H1 features ranked by persistence</div><div class="h1-list">${rows}</div>` : '<div class="unavail">No finite H1 features found.</div>'}
     </div>
     <div style="font-size:12px;color:var(--mute);line-height:1.6;padding:0 2px">
-      <b style="color:var(--text)">What this means:</b> Circular patterns indicate groups of documents
-      that share language with each other indirectly — like A references B, B references C, C references A —
-      without forming a single obvious cluster. This is a signal of coordinated but distributed activity.
-      Many separate groups means the corpus is fragmented with low overlap between topics.
-    </div>
-  </div>`;
-}
-
-function _renderDriftDetail(f){
-  const d = f.extra || {};
-  if(!d.wasserstein && d.wasserstein !== 0){
-    return `<div class="src-empty"><b>No drift data yet.</b>Upload a new corpus to compare its shape against the current one.</div>`;
-  }
-  const labelColor = {'none':'var(--ok)','minimal':'var(--ok)','moderate':'var(--signal)','significant':'var(--signal)','major':'var(--danger)'};
-  const col = labelColor[d.label] || 'var(--mute)';
-  const wPct = Math.min(100, Math.round(d.wasserstein * 200));
-  const bPct = Math.min(100, Math.round(d.bottleneck  * 200));
-  return `<div style="padding:0 2px">
-    <div class="trail-head"><span class="ttl">Shape drift detail</span><span class="ln"></span></div>
-    <div class="topo-panel">
-      <div class="topo-head" style="color:${col}">${d.label ? d.label.toUpperCase() : '—'} DRIFT</div>
-      <div class="topo-row">
-        <div class="topo-stat"><div class="tv" style="color:${col}">${d.wasserstein}</div><div class="tl">Wasserstein distance</div></div>
-        <div class="topo-stat"><div class="tv" style="color:${col}">${d.bottleneck}</div><div class="tl">Bottleneck distance</div></div>
-        <div class="topo-stat"><div class="tv" style="color:var(--mute);font-size:11px">${d.gudhi_available ? 'GUDHI' : 'fallback'}</div><div class="tl">computed by</div></div>
-      </div>
-      <div class="topo-bar-lbl" style="margin-top:10px">Wasserstein (average structural shift)</div>
-      <div class="topo-bar" style="height:7px"><i style="width:${wPct}%;background:${col}"></i></div>
-      <div class="topo-bar-lbl" style="margin-top:6px">Bottleneck (worst-case single shift)</div>
-      <div class="topo-bar" style="height:7px"><i style="width:${bPct}%;background:${col}"></i></div>
-    </div>
-    <div style="font-size:12px;color:var(--mute);line-height:1.6;padding:4px 2px 0">
-      <b style="color:var(--text)">What this means:</b>
-      Wasserstein distance measures the average change across all circular patterns between the two corpora —
-      like the total effort to move one diagram's bars to match the other.
-      Bottleneck distance measures the single biggest shift — one pattern that appeared or disappeared.
-      Together they tell you whether a new document batch represents a gradual evolution or a sudden structural break.
+      <b style="color:var(--text)">What this means:</b> Persistent H1 loops indicate sub-groups of documents
+      that share language enough to form a cycle but not enough to fully merge — a topological signal
+      of coordinated but distributed activity. High Betti-0 means fragmented, low-connectivity corpus.
+      This signal complements the statistical anomaly scores above.
     </div>
   </div>`;
 }
@@ -629,54 +527,25 @@ function renderGraph(){
   const rtabs  = document.getElementById('rtabs');
   const source = document.getElementById('source');
 
-  if(state.queryHits){ host.innerHTML=''; rtabs.style.display='none'; source.style.display=''; document.getElementById('mapHost').style.display='none'; return; }
+  if(state.queryHits){ host.innerHTML=''; rtabs.style.display='none'; source.style.display=''; return; }
 
-  const GRAPH_LENSES = ['suspicious','anomalies','relationships','themes','topology','drift'];
-  if(!GRAPH_LENSES.includes(state.lens)){ host.innerHTML=''; rtabs.style.display='none'; source.style.display=''; document.getElementById('mapHost').style.display='none'; return; }
+  const GRAPH_LENSES = ['suspicious','anomalies','relationships','themes','topology'];
+  if(!GRAPH_LENSES.includes(state.lens)){ host.innerHTML=''; rtabs.style.display='none'; source.style.display=''; return; }
 
-  // topology lens: always show tabs; drift: never show tabs (no graph, no trail, no map)
-  rtabs.style.display = (state.lens==='drift') ? 'none' : ((state.selected || state.lens==='topology') ? 'flex' : 'none');
-  // show/hide Corpus Map tab only for topology lens
-  document.getElementById('rtab-map').style.display  = state.lens==='topology' ? '' : 'none';
-  // hide Audit Trail for lenses that have no source documents
-  const noTrailLens = state.lens==='topology' || state.lens==='drift';
-  document.getElementById('rtab-trail').style.display = noTrailLens ? 'none' : '';
-
+  rtabs.style.display = state.selected ? 'flex' : 'none';
   if(state.selected){
     document.getElementById('rtab-trail-ct').textContent = state.selected.sources.length;
     host.style.display='';
-    let tab;
-    if(state.lens==='topology') tab = state.rtab==='map' ? 'map' : 'graph';
-    else                        tab = state.rtab==='trail' ? 'trail' : (state.rtab==='map' ? 'map' : 'graph');
-    switchRTab(tab);
-    // drift has no graph or trail — force source div visible after switchRTab
-    if(state.lens==='drift'){
-      document.getElementById('graphHost').style.display = 'none';
-      document.getElementById('source').style.display    = '';
-      document.getElementById('mapHost').style.display   = 'none';
-    }
-  } else if(state.lens==='topology'){
-    state.rtab='map';
-    switchRTab('map');
-    host.style.display='none';
-    source.style.display='none';
-  } else if(state.lens==='drift'){
-    rtabs.style.display='none';
-    host.innerHTML='';
-    host.style.display='none';
-    source.style.display='none';
-    document.getElementById('mapHost').style.display='none';
+    switchRTab(state.rtab==='trail' ? 'trail' : 'graph');
   } else {
     state.rtab='graph';
     host.style.display='';
     source.style.display='none';
-    document.getElementById('mapHost').style.display='none';
   }
 
   if(state.lens==='relationships')  _graphRelationships(host);
   else if(state.lens==='themes')    _graphThemes(host);
   else if(state.lens==='topology')  _graphTopology(host);
-  else if(state.lens==='drift')     host.innerHTML='';
   else                              _graphScatter(host, state.lens);
 }
 
@@ -825,7 +694,7 @@ function _graphTopology(host){
   const selIdx = state.selected ? (state.selected.extra.index||0) : -1;
 
   let svg = `<div class="graphwrap"><svg viewBox="0 0 ${W} ${H}" style="display:block;width:100%;height:auto">`;
-  svg += `<text x="${PAD.l+iw/2}" y="14" text-anchor="middle" font-size="10" fill="var(--tda)" font-weight="600">Circular patterns — by strength</text>`;
+  svg += `<text x="${PAD.l+iw/2}" y="14" text-anchor="middle" font-size="10" fill="var(--tda)" font-weight="600">Persistence Barcode — H1 features</text>`;
   svg += `<text x="${PAD.l}" y="${PAD.t-4}" text-anchor="start" font-size="8" fill="var(--faint)">0</text>`;
   svg += `<text x="${W-PAD.r}" y="${PAD.t-4}" text-anchor="end" font-size="8" fill="var(--faint)">${maxDeath.toFixed(2)}</text>`;
   svg += `<line x1="${PAD.l}" y1="${H-PAD.b}" x2="${PAD.l+iw}" y2="${H-PAD.b}" stroke="var(--line)" stroke-width="1"/>`;
@@ -850,9 +719,9 @@ function _graphTopology(host){
   }
   svg += `</svg></div>
   <div style="font-size:11px;color:var(--mute);margin:0 4px 10px">
-    Separate groups: <span style="color:var(--tda)">${betti0}</span> ·
-    Circular patterns: <span style="color:var(--tda)">${betti1}</span> ·
-    longer bar = stronger pattern · click a bar to inspect
+    Betti-0: <span style="color:var(--tda)">${betti0}</span> components ·
+    Betti-1: <span style="color:var(--tda)">${betti1}</span> loops ·
+    longer bars = more persistent structure · click a bar to inspect
   </div>`;
   host.innerHTML = svg;
   host.querySelectorAll('.bnode').forEach((g)=>{
@@ -1027,7 +896,6 @@ document.getElementById('upload-input').addEventListener('change', async functio
     const json = await res.json();
     if(!res.ok){ _toast('Error: ' + (json.detail||res.statusText), 'err'); return; }
     DATA = {...json.findings, documents: json.documents};
-    DATA.drift = _buildDriftFindings(json.drift || null);
     initDerivedState();
     document.getElementById('s-docs').textContent = DATA.meta.n_docs;
     document.getElementById('f-docs').textContent = DATA.meta.n_docs;
@@ -1038,9 +906,7 @@ document.getElementById('upload-input').addEventListener('change', async functio
     state.queryHits = null;
     document.getElementById('q').value = '';
     render();
-    const d = json.drift;
-    const driftMsg = d ? ` · Shape drift: ${d.label.toUpperCase()} (W=${d.wasserstein})` : '';
-    _toast('Loaded ' + json.n_docs + ' docs from ' + file.name + driftMsg, 'ok');
+    _toast('Loaded ' + json.n_docs + ' docs from ' + file.name, 'ok');
   } catch(e){
     _toast('Upload failed: ' + e.message, 'err');
   } finally {

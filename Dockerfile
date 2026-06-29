@@ -27,6 +27,16 @@ RUN pip install --no-cache-dir torch --extra-index-url https://download.pytorch.
 RUN pip install --no-cache-dir giotto-tda || \
     echo "[WARNING] giotto-tda build failed — running with ripser fallback"
 
+# KeplerMapper (corpus shape visualization) — install without deps to avoid openmp clash
+RUN pip install --no-cache-dir kmapper --no-deps
+
+# POT (Python Optimal Transport) — required by gudhi.wasserstein
+RUN pip install --no-cache-dir pot
+
+# GUDHI (drift detection) — no wheel for linux/arm64; falls back to mean-persistence diff if unavailable
+RUN pip install --no-cache-dir gudhi || \
+    echo "[WARNING] gudhi not available on this platform — drift uses mean-persistence fallback"
+
 # Pre-download the Tika JAR so first-request latency is zero
 RUN python -c "import tika; tika.initVM()" 2>/dev/null || true
 
